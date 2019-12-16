@@ -3,7 +3,7 @@
     <parent>
         <artifactId>byte-buddy-parent</artifactId>
         <groupId>net.bytebuddy</groupId>
-        <version>1.10.4-SNAPSHOT</version>
+        <version>1.10.5-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -19,15 +19,18 @@
 
         IDEs are typically confused by this setup and this sub project should be directly imported as
         a Gradle project to avoid errors. Alternatively, this project should be ignored.
+
+        When running Maven clean, this module might fail if the dependencies were never packaged before.
+        This is due to the resolution scope of the maven-exec-plugin where the byte-buddy dependency is
+        attempted to be resolved what fails if the project was never build on the current machine for
+        a given snapshot version.
     -->
 
     <properties>
         <version.plugin.antrun>1.8</version.plugin.antrun>
-        <version.plugin.gradlerun>1.0.10</version.plugin.gradlerun>
-        <version.plugin.directory>0.2</version.plugin.directory>
-        <version.gradle>4.5</version.gradle>
-        <exec.gradle>gradlew</exec.gradle>
-        <!-- Actual values are set via settings.xml on the 'gradle' profile since they cannot be published. -->
+        <gradle.exec>gradlew</gradle.exec>
+        <gradle.disabled>false</gradle.disabled>
+        <!-- Actual values must be set via settings.xml or using command line arguments since they cannot be published. -->
         <gradle.publish.key />
         <gradle.publish.secret />
     </properties>
@@ -66,6 +69,9 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>${version.plugin.exec}</version>
+                <configuration>
+                    <skip>${gradle.disabled}</skip>
+                </configuration>
                 <executions>
                     <execution>
                         <id>gradle-clean</id>
@@ -74,9 +80,10 @@
                             <goal>exec</goal>
                         </goals>
                         <configuration>
-                            <executable>${project.basedir}/${exec.gradle}</executable>
+                            <executable>${project.basedir}/${gradle.exec}</executable>
                             <arguments>
                                 <argument>clean</argument>
+                                <argument>--build-file=build.simple.gradle</argument>
                                 <argument>--info</argument>
                             </arguments>
                         </configuration>
@@ -88,10 +95,11 @@
                             <goal>exec</goal>
                         </goals>
                         <configuration>
-                            <executable>${project.basedir}/${exec.gradle}</executable>
+                            <executable>${project.basedir}/${gradle.exec}</executable>
                             <arguments>
                                 <argument>build</argument>
                                 <argument>javadocJar</argument>
+                                <argument>--build-file=build.simple.gradle</argument>
                                 <argument>--info</argument>
                                 <argument>-Dnet.bytebuddy.test.integration=${bytebuddy.integration}</argument>
                                 <argument>-Dnet.bytebuddy.misc.extras=${bytebuddy.extras}</argument>
@@ -107,10 +115,10 @@
                             <goal>exec</goal>
                         </goals>
                         <configuration>
-                            <executable>${project.basedir}/${exec.gradle}</executable>
+                            <executable>${project.basedir}/${gradle.exec}</executable>
                             <arguments>
                                 <argument>publishPlugins</argument>
-                                <argument>--build-file=release.gradle</argument>
+                                <argument>--build-file=build.gradle</argument>
                                 <argument>--info</argument>
                                 <argument>-Dnet.bytebuddy.test.integration=${bytebuddy.integration}</argument>
                                 <argument>-Dnet.bytebuddy.misc.extras=${bytebuddy.extras}</argument>
@@ -134,6 +142,7 @@
                             <goal>run</goal>
                         </goals>
                         <configuration>
+                            <skip>${gradle.disabled}</skip>
                             <target>
                                 <copy file="${project.basedir}/build/libs/${project.artifactId}-${project.version}.jar" todir="${project.build.directory}" overwrite="true" />
                             </target>
@@ -145,18 +154,7 @@
     </build>
 
     <profiles>
-        <profile>
-            <id>gradle-legacy</id>
-            <activation>
-                <activeByDefault>false</activeByDefault>
-                <jdk>1.6</jdk>
-            </activation>
-            <properties>
-                <version.plugin.gradlerun>1.0.9</version.plugin.gradlerun>
-                <version.gradle>2.14.1</version.gradle>
-            </properties>
-        </profile>
-        
+        <!-- Defines the correct Gradle wrapper binary to use when run on Windows. -->
         <profile>
             <id>gradle-windows</id>
             <activation>
@@ -166,8 +164,43 @@
                 </os>
             </activation>
             <properties>
-                <exec.gradle>gradlew.bat</exec.gradle>
+                <gradle.exec>gradlew.bat</gradle.exec>
             </properties>
+        </profile>
+
+        <!-- Avoids triggering Gradle on JDK versions that Gradle does not currently support. -->
+        <profile>
+            <id>gradle-disabled</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <jdk>[14,)</jdk>
+            </activation>
+            <properties>
+                <gradle.disabled>true</gradle.disabled>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>${version.plugin.antrun}</version>
+                        <executions>
+                            <execution>
+                                <id>log-skip</id>
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <echo message="Skipping Gradle build since it does not support the current JDK version" />
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
 
         <profile>
@@ -187,6 +220,7 @@
                                     <goal>run</goal>
                                 </goals>
                                 <configuration>
+                                    <skip>${gradle.disabled}</skip>
                                     <target>
                                         <copy file="${project.basedir}/build/libs/${project.artifactId}-${project.version}-javadoc.jar" todir="${project.build.directory}" overwrite="true" />
                                     </target>
